@@ -1,0 +1,6 @@
+{
+  "name": "ระบบจัดการร้านอาหาร POS",
+  "description": "ระบบ POS ร้านอาหารครบวงจร จัดการออเดอร์ คิดเงิน ตัดสต็อก สแกนใบเสร็จด้วย AI รายงานกำไรขาดทุน และโหมดสั่งอาหารสำหรับลูกค้า",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
