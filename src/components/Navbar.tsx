@@ -15,6 +15,7 @@ import {
   Sparkles,
   QrCode,
   LogOut,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { UserAccount, UserRole } from '../types/pos';
 
@@ -29,6 +30,7 @@ export const Navbar: React.FC = () => {
     loginWithPin,
     switchToGuestMode,
     lowStockItems,
+    googleScriptStatus,
     showToast,
   } = usePOS();
 
@@ -151,6 +153,32 @@ export const Navbar: React.FC = () => {
               >
                 <KeyRound className="w-3.5 h-3.5" />
                 <span>เข้าสู่ระบบเจ้าหน้าที่ (Staff Login)</span>
+              </button>
+            )}
+
+            {/* Quick Google Sheets Cloud Database Status & Config Button */}
+            {!isGuestMode && (
+              <button
+                id="btn-quick-sheets"
+                onClick={() => setActiveTab('sheets')}
+                className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                  googleScriptStatus === 'connected'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+                title="ตั้งค่าฐานข้อมูล Google Sheets & Google Apps Script"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Google Sheets</span>
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    googleScriptStatus === 'connected'
+                      ? 'bg-emerald-500'
+                      : googleScriptStatus === 'syncing'
+                      ? 'bg-amber-500 animate-pulse'
+                      : 'bg-slate-400'
+                  }`}
+                />
               </button>
             )}
 
@@ -300,6 +328,19 @@ export const Navbar: React.FC = () => {
                     <span>จัดการสิทธิ์ผู้ใช้งาน</span>
                   </button>
                 )}
+
+                <button
+                  id="tab-sheets"
+                  onClick={() => setActiveTab('sheets')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                    activeTab === 'sheets'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
+                  }`}
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+                  <span>Google Sheets Database</span>
+                </button>
               </>
             ) : (
               <div className="py-1 flex items-center justify-between w-full">

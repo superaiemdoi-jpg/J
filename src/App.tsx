@@ -8,6 +8,7 @@ import { InventoryView } from './components/InventoryView';
 import { ReceiptScannerView } from './components/ReceiptScannerView';
 import { AdminUsersView } from './components/AdminUsersView';
 import { KitchenView } from './components/KitchenView';
+import { GoogleSheetsView } from './components/GoogleSheetsView';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 const POSAppContent: React.FC = () => {
@@ -34,6 +35,12 @@ const POSAppContent: React.FC = () => {
       case 'kitchen':
       case 'orders':
         return <KitchenView />;
+      case 'sheets':
+        return (
+          <div className="max-w-7xl mx-auto p-4 sm:p-6">
+            <GoogleSheetsView />
+          </div>
+        );
       default:
         return <POSView />;
     }

@@ -21,6 +21,18 @@ import {
   INITIAL_EXPENSES,
   INITIAL_USERS,
 } from '../data/initialData';
+import {
+  getSavedGoogleScriptConfig,
+  saveGoogleScriptConfig,
+  testGoogleScriptConnection as apiTestGoogleScript,
+  fetchAllFromGoogleSheets,
+  syncAllToGoogleSheets,
+  pushOrderToGoogleSheets,
+  pushOrderStatusToGoogleSheets,
+  pushIngredientToGoogleSheets,
+  pushDeleteIngredientToGoogleSheets,
+  pushExpenseToGoogleSheets,
+} from '../services/googleSheetsService';
 
 interface POSContextType {
   // Navigation & View
@@ -30,6 +42,20 @@ interface POSContextType {
   setRestaurantName: (name: string) => void;
   promptPayId: string;
   setPromptPayId: (id: string) => void;
+
+  // Google Sheets Cloud Database Integration
+  googleScriptUrl: string;
+  setGoogleScriptUrl: (url: string) => void;
+  googleSheetUrl: string;
+  setGoogleSheetUrl: (url: string) => void;
+  autoSyncToSheets: boolean;
+  setAutoSyncToSheets: (auto: boolean) => void;
+  isGoogleScriptSyncing: boolean;
+  googleScriptStatus: 'disconnected' | 'connected' | 'syncing' | 'error';
+  lastGoogleScriptSync: string | null;
+  testGoogleScriptConnection: (url?: string) => Promise<{ success: boolean; message: string }>;
+  syncAllToSheets: () => Promise<boolean>;
+  loadAllFromSheets: () => Promise<boolean>;
 
   // Auth & Roles
   currentUser: UserAccount;
@@ -201,6 +227,133 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTimeout(() => {
       setToastMessage(null);
     }, 3500);
+  };
+
+  // Google Sheets Cloud Database Integration State
+  const initialGasConfig = useMemo(() => getSavedGoogleScriptConfig(), []);
+  const [googleScriptUrl, setGoogleScriptUrlState] = useState<string>(initialGasConfig.scriptUrl);
+  const [googleSheetUrl, setGoogleSheetUrlState] = useState<string>(initialGasConfig.sheetUrl);
+  const [autoSyncToSheets, setAutoSyncToSheetsState] = useState<boolean>(initialGasConfig.autoSync);
+  const [lastGoogleScriptSync, setLastGoogleScriptSync] = useState<string | null>(initialGasConfig.lastSyncedAt);
+  const [isGoogleScriptSyncing, setIsGoogleScriptSyncing] = useState<boolean>(false);
+  const [googleScriptStatus, setGoogleScriptStatus] = useState<'disconnected' | 'connected' | 'syncing' | 'error'>(
+    initialGasConfig.scriptUrl ? 'connected' : 'disconnected'
+  );
+
+  const setGoogleScriptUrl = (url: string) => {
+    const trimmed = url.trim();
+    setGoogleScriptUrlState(trimmed);
+    saveGoogleScriptConfig({ scriptUrl: trimmed });
+    setGoogleScriptStatus(trimmed ? 'connected' : 'disconnected');
+  };
+
+  const setGoogleSheetUrl = (url: string) => {
+    const trimmed = url.trim();
+    setGoogleSheetUrlState(trimmed);
+    saveGoogleScriptConfig({ sheetUrl: trimmed });
+  };
+
+  const setAutoSyncToSheets = (auto: boolean) => {
+    setAutoSyncToSheetsState(auto);
+    saveGoogleScriptConfig({ autoSync: auto });
+  };
+
+  const testGoogleScriptConnection = async (
+    url?: string
+  ): Promise<{ success: boolean; message: string; details?: any }> => {
+    const targetUrl = url || googleScriptUrl;
+    if (!targetUrl) {
+      return { success: false, message: 'กรุณากรอก URL เว็บแอป Google Apps Script' };
+    }
+    setIsGoogleScriptSyncing(true);
+    const res = await apiTestGoogleScript(targetUrl);
+    setIsGoogleScriptSyncing(false);
+    if (res.success) {
+      setGoogleScriptStatus('connected');
+    } else {
+      setGoogleScriptStatus('error');
+    }
+    return res;
+  };
+
+  const syncAllToSheets = async (): Promise<boolean> => {
+    if (!googleScriptUrl) {
+      showToast('กรุณาระบุ URL เว็บแอป Google Apps Script ก่อน');
+      return false;
+    }
+    setIsGoogleScriptSyncing(true);
+    setGoogleScriptStatus('syncing');
+    try {
+      const res = await syncAllToGoogleSheets(googleScriptUrl, {
+        orders,
+        menuItems,
+        inventory,
+        expenses,
+        users,
+        restaurantName,
+        promptPayId,
+      });
+      if (res.success) {
+        const now = new Date().toISOString();
+        setLastGoogleScriptSync(now);
+        saveGoogleScriptConfig({ lastSyncedAt: now });
+        setGoogleScriptStatus('connected');
+        showToast('ซิงค์ข้อมูลทั้งหมดขึ้น Google Sheets สำเร็จเรียบร้อยแล้ว!');
+        return true;
+      } else {
+        setGoogleScriptStatus('error');
+        showToast(`ซิงค์ไม่สำเร็จ: ${res.message}`);
+        return false;
+      }
+    } catch (err: any) {
+      setGoogleScriptStatus('error');
+      showToast(`เกิดข้อผิดพลาด: ${err.message}`);
+      return false;
+    } finally {
+      setIsGoogleScriptSyncing(false);
+    }
+  };
+
+  const loadAllFromSheets = async (): Promise<boolean> => {
+    if (!googleScriptUrl) {
+      showToast('กรุณาระบุ URL เว็บแอป Google Apps Script ก่อน');
+      return false;
+    }
+    setIsGoogleScriptSyncing(true);
+    setGoogleScriptStatus('syncing');
+    try {
+      const res = await fetchAllFromGoogleSheets(googleScriptUrl);
+      if (res.success && res.data) {
+        if (res.data.orders && Array.isArray(res.data.orders) && res.data.orders.length > 0) {
+          setOrders(res.data.orders);
+        }
+        if (res.data.menuItems && Array.isArray(res.data.menuItems) && res.data.menuItems.length > 0) {
+          setMenuItems(res.data.menuItems);
+        }
+        if (res.data.inventory && Array.isArray(res.data.inventory) && res.data.inventory.length > 0) {
+          setInventory(res.data.inventory);
+        }
+        if (res.data.expenses && Array.isArray(res.data.expenses) && res.data.expenses.length > 0) {
+          setExpenses(res.data.expenses);
+        }
+        const now = new Date().toISOString();
+        setLastGoogleScriptSync(now);
+        saveGoogleScriptConfig({ lastSyncedAt: now });
+        setGoogleScriptStatus('connected');
+        showToast('ดึงข้อมูลล่าสุดจาก Google Sheets เรียบร้อยแล้ว!');
+        return true;
+      } else {
+        setGoogleScriptStatus('error');
+        showToast(`ดึงข้อมูลไม่สำเร็จ: ${res.message || 'ไม่มีข้อมูลตอบกลับ'}`);
+        return false;
+      }
+    } catch (err: any) {
+      setGoogleScriptStatus('error');
+      showToast(`เกิดข้อผิดพลาดในการดึงข้อมูล: ${err.message}`);
+      return false;
+    } finally {
+      setIsGoogleScriptSyncing(false);
+    }
   };
 
   // Low stock calculation
@@ -472,6 +625,13 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Clear cart
     clearCart();
 
+    // Real-time auto-sync to Google Sheets
+    if (autoSyncToSheets && googleScriptUrl) {
+      pushOrderToGoogleSheets(googleScriptUrl, newOrder).catch((err) =>
+        console.warn('Google Sheets auto-sync order error:', err)
+      );
+    }
+
     showToast(`ชำระเงินสำเร็จ บิลเลขที่ ${orderNumber}`);
     return newOrder;
   };
@@ -514,6 +674,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setOrders((prev) => [newOrder, ...prev]);
     deductInventoryForItems(cart);
     clearCart();
+
+    // Real-time auto-sync to Google Sheets
+    if (autoSyncToSheets && googleScriptUrl) {
+      pushOrderToGoogleSheets(googleScriptUrl, newOrder).catch((err) =>
+        console.warn('Google Sheets auto-sync order error:', err)
+      );
+    }
+
     showToast(`ส่งรายการอาหารเข้าครัวเรียบร้อยแล้ว (${tbl}) - รอชำระเงิน`);
     return newOrder;
   };
@@ -522,6 +690,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setOrders((prev) =>
       prev.map((ord) => (ord.id === orderId ? { ...ord, status } : ord))
     );
+    if (autoSyncToSheets && googleScriptUrl) {
+      pushOrderStatusToGoogleSheets(googleScriptUrl, { orderId, status }).catch(console.warn);
+    }
     showToast(`อัปเดตสถานะออเดอร์เป็น: ${status}`);
   };
 
@@ -534,13 +705,26 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((ord) => {
         if (ord.id === orderId) {
           const rec = amountReceived || ord.netTotal;
+          const change = Math.max(0, rec - ord.netTotal);
+          const paidTime = new Date().toISOString();
+          if (autoSyncToSheets && googleScriptUrl) {
+            pushOrderStatusToGoogleSheets(googleScriptUrl, {
+              orderId,
+              status: 'completed',
+              paymentStatus: 'paid',
+              paymentMethod,
+              amountReceived: rec,
+              changeAmount: change,
+              paidAt: paidTime,
+            }).catch(console.warn);
+          }
           return {
             ...ord,
             paymentStatus: 'paid',
             paymentMethod,
             amountReceived: rec,
-            changeAmount: Math.max(0, rec - ord.netTotal),
-            paidAt: new Date().toISOString(),
+            changeAmount: change,
+            paidAt: paidTime,
           };
         }
         return ord;
@@ -553,6 +737,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setOrders((prev) =>
       prev.map((ord) => (ord.id === orderId ? { ...ord, status: 'cancelled' } : ord))
     );
+    if (autoSyncToSheets && googleScriptUrl) {
+      pushOrderStatusToGoogleSheets(googleScriptUrl, {
+        orderId,
+        status: 'cancelled',
+      }).catch(console.warn);
+    }
     showToast('ยกเลิกรายการออเดอร์เรียบร้อยแล้ว');
   };
 
@@ -561,12 +751,16 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setInventory((prev) =>
       prev.map((item) => {
         if (item.id === id) {
-          return {
+          const updatedItem = {
             ...item,
             currentStock: Number((item.currentStock + amount).toFixed(2)),
             costPerUnit: unitCost !== undefined ? unitCost : item.costPerUnit,
             lastRestockedAt: new Date().toISOString().split('T')[0],
           };
+          if (autoSyncToSheets && googleScriptUrl) {
+            pushIngredientToGoogleSheets(googleScriptUrl, updatedItem, false).catch(console.warn);
+          }
+          return updatedItem;
         }
         return item;
       })
@@ -583,13 +777,25 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastRestockedAt: new Date().toISOString().split('T')[0],
     };
     setInventory((prev) => [newIngredient, ...prev]);
+    if (autoSyncToSheets && googleScriptUrl) {
+      pushIngredientToGoogleSheets(googleScriptUrl, newIngredient, true).catch(console.warn);
+    }
     showToast(`เพิ่มวัตถุดิบ "${itemData.name}" เรียบร้อยแล้ว`);
   };
 
   // Update ingredient
   const updateIngredient = (id: string, updated: Partial<Omit<Ingredient, 'id'>>) => {
     setInventory((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...updated } : item))
+      prev.map((item) => {
+        if (item.id === id) {
+          const updatedItem = { ...item, ...updated };
+          if (autoSyncToSheets && googleScriptUrl) {
+            pushIngredientToGoogleSheets(googleScriptUrl, updatedItem, false).catch(console.warn);
+          }
+          return updatedItem;
+        }
+        return item;
+      })
     );
     showToast('อัปเดตข้อมูลวัตถุดิบเรียบร้อยแล้ว');
   };
@@ -598,6 +804,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteIngredient = (id: string) => {
     const itemToDelete = inventory.find((i) => i.id === id);
     setInventory((prev) => prev.filter((item) => item.id !== id));
+    if (autoSyncToSheets && googleScriptUrl) {
+      pushDeleteIngredientToGoogleSheets(googleScriptUrl, id).catch(console.warn);
+    }
     showToast(`ลบวัตถุดิบ "${itemToDelete?.name || ''}" เรียบร้อยแล้ว`);
   };
 
@@ -609,8 +818,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
     setExpenses((prev) => [newExpense, ...prev]);
-
-    // Optional: If expense items match inventory names, offer restock
+    if (autoSyncToSheets && googleScriptUrl) {
+      pushExpenseToGoogleSheets(googleScriptUrl, newExpense).catch(console.warn);
+    }
     showToast(`บันทึกค่าใช้จ่าย "${expenseData.merchantName}" เรียบร้อยแล้ว`);
   };
 
@@ -707,6 +917,18 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setRestaurantName,
         promptPayId,
         setPromptPayId,
+        googleScriptUrl,
+        setGoogleScriptUrl,
+        googleSheetUrl,
+        setGoogleSheetUrl,
+        autoSyncToSheets,
+        setAutoSyncToSheets,
+        isGoogleScriptSyncing,
+        googleScriptStatus,
+        lastGoogleScriptSync,
+        testGoogleScriptConnection,
+        syncAllToSheets,
+        loadAllFromSheets,
         currentUser,
         users,
         isGuestMode,

@@ -60,7 +60,7 @@ export const POSView: React.FC = () => {
     updateMenuItem,
     orders,
     submitOrderPayLater,
-    setToastMessage,
+    showToast,
   } = usePOS();
 
   const [isPaymentOpen, setIsPaymentOpen] = useState<boolean>(false);
@@ -599,7 +599,7 @@ export const POSView: React.FC = () => {
                   onClick={() => {
                     const tableDisplay = cartOrderType === 'dine-in' ? cartTable : 'สั่งกลับบ้าน';
                     submitOrderPayLater();
-                    setToastMessage(`ส่งออเดอร์ (${tableDisplay}) เข้าครัวแล้ว • ชำระเงินเมื่อลูกค้าทานเสร็จ`);
+                    showToast(`ส่งออเดอร์ (${tableDisplay}) เข้าครัวแล้ว • ชำระเงินเมื่อลูกค้าทานเสร็จ`);
                   }}
                   className={`py-3 px-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs border ${
                     cart.length === 0
